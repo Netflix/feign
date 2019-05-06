@@ -56,7 +56,7 @@ public abstract class Logger {
       int bodyLength = 0;
       if (request.body() != null) {
         bodyLength = request.body().length;
-        if (logLevel.ordinal() >= Level.FULL.ordinal()) {
+        if (logLevel.ordinal() >= Level.FULL.ordinal() || logLevel == Level.REQUEST_FULL) {
           String bodyText =
               request.charset() != null ? new String(request.body(), request.charset()) : null;
           log(configKey, ""); // CRLF
@@ -93,12 +93,12 @@ public abstract class Logger {
       if (response.body() != null && !(status == 204 || status == 205)) {
         // HTTP 204 No Content "...response MUST NOT include a message-body"
         // HTTP 205 Reset Content "...response MUST NOT include an entity"
-        if (logLevel.ordinal() >= Level.FULL.ordinal()) {
+        if (logLevel.ordinal() >= Level.FULL.ordinal() || logLevel == Level.RESPONSE_FULL) {
           log(configKey, ""); // CRLF
         }
         byte[] bodyData = Util.toByteArray(response.body().asInputStream());
         bodyLength = bodyData.length;
-        if (logLevel.ordinal() >= Level.FULL.ordinal() && bodyLength > 0) {
+        if ((logLevel.ordinal() >= Level.FULL.ordinal() || logLevel == Level.RESPONSE_FULL) && bodyLength > 0) {
           log(configKey, "%s", decodeOrDefault(bodyData, UTF_8, "Binary data"));
         }
         log(configKey, "<--- END HTTP (%s-byte body)", bodyLength);
@@ -116,7 +116,7 @@ public abstract class Logger {
                                        long elapsedTime) {
     log(configKey, "<--- ERROR %s: %s (%sms)", ioe.getClass().getSimpleName(), ioe.getMessage(),
         elapsedTime);
-    if (logLevel.ordinal() >= Level.FULL.ordinal()) {
+    if (logLevel.ordinal() >= Level.REQUEST_FULL.ordinal()) {
       StringWriter sw = new StringWriter();
       ioe.printStackTrace(new PrintWriter(sw));
       log(configKey, "%s", sw.toString());
@@ -141,6 +141,14 @@ public abstract class Logger {
      * Log the basic information along with request and response headers.
      */
     HEADERS,
+    /**
+     * Log the headers, body, and metadata for requests.
+     */
+    REQUEST_FULL,
+    /**
+     * Log the headers, body, and metadata for responses.
+     */
+    RESPONSE_FULL,
     /**
      * Log the headers, body, and metadata for both requests and responses.
      */
