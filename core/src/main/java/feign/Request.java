@@ -177,7 +177,9 @@ public final class Request {
    * @return the current character set for the request, may be {@literal null} for binary data.
    */
   public Charset charset() {
-    return body.encoding;
+    return (body == null)
+        ? Body.EMPTY.encoding
+        : body.encoding;
   }
 
   /**
@@ -187,7 +189,9 @@ public final class Request {
    * @see #charset()
    */
   public byte[] body() {
-    return body.data;
+    return (body == null)
+        ? Body.EMPTY.data
+        : body.data;
   }
 
   public boolean isBinary() {
@@ -375,6 +379,8 @@ public final class Request {
    */
   @Experimental
   public static class Body {
+
+    public static final Body EMPTY = new Body(new byte[0]);
 
     private Charset encoding;
     private byte[] data;
