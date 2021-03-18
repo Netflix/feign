@@ -13,12 +13,18 @@
  */
 package feign.querymap;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
 import feign.Param;
 import feign.QueryMapEncoder;
 import feign.codec.EncodeException;
-import java.lang.reflect.Field;
-import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * the query map will be generated using member variable names as query parameter names.
@@ -31,16 +37,20 @@ import java.util.stream.Collectors;
 public class FieldQueryMapEncoder implements QueryMapEncoder {
 
   private final Map<Class<?>, ObjectParamMetadata> classToMetadata =
-      new HashMap<Class<?>, ObjectParamMetadata>();
+      new ConcurrentHashMap<>();
 
   @Override
   public Map<String, Object> encode(Object object) throws EncodeException {
     try {
-      ObjectParamMetadata metadata = getMetadata(object.getClass());
-      Map<String, Object> fieldNameToValue = new HashMap<String, Object>();
+      AtomicReference<Object> atomicReference = new AtomicReference<>();
+      atomicReference.set(object);
+
+      ObjectParamMetadata metadata = getMetadata(atomicReference.get().getClass());
+
+      Map<String, Object> fieldNameToValue = new ConcurrentHashMap<>();
       for (Field field : metadata.objectFields) {
-        Object value = field.get(object);
-        if (value != null && value != object) {
+        Object value = field.get(atomicReference.get());
+        if (value != null && value != atomicReference.get()) {
           Param alias = field.getAnnotation(Param.class);
           String name = alias != null ? alias.value() : field.getName();
           fieldNameToValue.put(name, value);
@@ -53,11 +63,16 @@ public class FieldQueryMapEncoder implements QueryMapEncoder {
   }
 
   private ObjectParamMetadata getMetadata(Class<?> objectType) {
-    ObjectParamMetadata metadata = classToMetadata.get(objectType);
-    if (metadata == null) {
+
+    ObjectParamMetadata metadata;
+
+    if (classToMetadata.containsKey(objectType)) {
+      metadata = classToMetadata.get(objectType);
+    } else {
       metadata = ObjectParamMetadata.parseObjectType(objectType);
       classToMetadata.put(objectType, metadata);
     }
+
     return metadata;
   }
 
