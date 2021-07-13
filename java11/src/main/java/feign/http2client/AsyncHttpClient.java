@@ -13,61 +13,47 @@
  */
 package feign.http2client;
 
-import feign.Client;
+import feign.AsyncClient;
 import feign.Request;
 import feign.Request.Options;
 import feign.Response;
 import feign.Util;
-import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpClient.Redirect;
-import java.net.http.HttpClient.Version;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
-public class Http2Client extends AbstractHttpClient implements Client {
+public class AsyncHttpClient extends AbstractHttpClient implements AsyncClient<Object> {
 
   private final HttpClient client;
 
-  public Http2Client() {
+  public AsyncHttpClient() {
     this(HttpClient.newBuilder()
         .followRedirects(Redirect.ALWAYS)
-        .version(Version.HTTP_2)
         .build());
   }
 
-  public Http2Client(Options options) {
-    this(newClientBuilder(options)
-        .version(Version.HTTP_2)
-        .build());
-  }
-
-  public Http2Client(HttpClient client) {
+  public AsyncHttpClient(HttpClient client) {
     this.client = Util.checkNotNull(client, "HttpClient must not be null");
   }
 
   @Override
-  public Response execute(Request request, Options options) throws IOException {
-    final HttpRequest httpRequest;
+  public CompletableFuture<Response> execute(Request request,
+                                             Options options,
+                                             Optional<Object> requestContext) {
+    HttpRequest httpRequest;
     try {
-      httpRequest = newRequestBuilder(request, options)
-          .version(Version.HTTP_2)
-          .build();
+      httpRequest = newRequestBuilder(request, options).build();
     } catch (URISyntaxException e) {
-      throw new IOException("Invalid uri " + request.url(), e);
+      throw new IllegalArgumentException("Invalid uri " + request.url(), e);
     }
 
     HttpClient clientForRequest = getOrCreateClient(client, options);
-    HttpResponse<byte[]> httpResponse;
-    try {
-      httpResponse = clientForRequest.send(httpRequest, BodyHandlers.ofByteArray());
-    } catch (final InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Invalid uri " + request.url(), e);
-    }
-
-    return toFeignResponse(request, httpResponse);
+    CompletableFuture<HttpResponse<byte[]>> future =
+        clientForRequest.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray());
+    return future.thenApply(httpResponse -> toFeignResponse(request, httpResponse));
   }
 }
