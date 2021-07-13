@@ -24,9 +24,7 @@ import feign.Logger.NoOpLogger;
 import feign.ReflectiveFeign.ParseHandlersByName;
 import feign.Request.Options;
 import feign.Target.HardCodedTarget;
-import feign.codec.Decoder;
-import feign.codec.Encoder;
-import feign.codec.ErrorDecoder;
+import feign.codec.*;
 import feign.querymap.FieldQueryMapEncoder;
 import static feign.ExceptionPropagationPolicy.NONE;
 
@@ -105,7 +103,7 @@ public abstract class Feign {
     private Retryer retryer = new Retryer.Default();
     private Logger logger = new NoOpLogger();
     private Encoder encoder = new Encoder.Default();
-    private Decoder decoder = new Decoder.Default();
+    private FifoDecoder decoder = new FifoDecoder();
     private QueryMapEncoder queryMapEncoder = new FieldQueryMapEncoder();
     private ErrorDecoder errorDecoder = new ErrorDecoder.Default();
     private Options options = new Options();
@@ -147,8 +145,26 @@ public abstract class Feign {
       return this;
     }
 
+    /**
+     * When invoked, will override the decoding chain, so this method should never be called after
+     * {@link Builder#decoder(TypedDecoder)}
+     *
+     * @param decoder
+     * @return
+     */
     public Builder decoder(Decoder decoder) {
-      this.decoder = decoder;
+      this.decoder = new FifoDecoder(decoder);
+      return this;
+    }
+
+    /**
+     * Appended another {@link TypedDecoder} to decoder chain.
+     *
+     * @param decoder
+     * @return
+     */
+    public Builder decoder(TypedDecoder decoder) {
+      this.decoder.append(decoder);
       return this;
     }
 
@@ -161,7 +177,15 @@ public abstract class Feign {
      * Allows to map the response before passing it to the decoder.
      */
     public Builder mapAndDecode(ResponseMapper mapper, Decoder decoder) {
-      this.decoder = new ResponseMappingDecoder(mapper, decoder);
+      this.decoder = new FifoDecoder(new ResponseMappingDecoder(mapper, decoder));
+      return this;
+    }
+
+    /**
+     * Allows to map the response before passing it to the decoder.
+     */
+    public Builder mapAndDecode(ResponseMapper mapper, TypedDecoder decoder) {
+      this.decoder.append(new ResponseMappingDecoder(mapper, decoder));
       return this;
     }
 
@@ -294,7 +318,7 @@ public abstract class Feign {
     }
   }
 
-  public static class ResponseMappingDecoder implements Decoder {
+  public static class ResponseMappingDecoder implements TypedDecoder {
 
     private final ResponseMapper mapper;
     private final Decoder delegate;
@@ -307,6 +331,15 @@ public abstract class Feign {
     @Override
     public Object decode(Response response, Type type) throws IOException {
       return delegate.decode(mapper.map(response, type), type);
+    }
+
+    @Override
+    public boolean canDecode(Response response, Type type)
+        throws IOException, DecodeException, FeignException {
+      if(delegate instanceof TypedDecoder)
+      return ((TypedDecoder) delegate).canDecode(response, type);
+
+      return true;
     }
   }
 }
