@@ -16,6 +16,8 @@ package feign.error;
 import feign.Response;
 import feign.codec.Decoder;
 import feign.codec.ErrorDecoder;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -93,9 +95,10 @@ public class AnnotationErrorDecoder implements ErrorDecoder {
       Map<String, MethodErrorHandler> methodErrorHandlerMap =
           new HashMap<String, MethodErrorHandler>();
       for (Method method : apiType.getMethods()) {
-        if (method.isAnnotationPresent(ErrorHandling.class)) {
+        ErrorHandling methodLevelAnnotation = getErrorHandlingAnnotation(method);
+        if (methodLevelAnnotation != null) {
           ErrorHandlingDefinition methodErrorHandling =
-              readAnnotation(method.getAnnotation(ErrorHandling.class), responseBodyDecoder);
+              readAnnotation(methodLevelAnnotation, responseBodyDecoder);
           ExceptionGenerator methodDefault = methodErrorHandling.defaultThrow;
           if (methodDefault.getExceptionType().equals(ErrorHandling.NO_DEFAULT.class)) {
             methodDefault = classLevelDefault;
@@ -113,8 +116,9 @@ public class AnnotationErrorDecoder implements ErrorDecoder {
     }
 
     Optional<ErrorHandling> readErrorHandlingIncludingInherited(Class<?> apiType) {
-      if (apiType.isAnnotationPresent(ErrorHandling.class)) {
-        return Optional.of(apiType.getAnnotation(ErrorHandling.class));
+      ErrorHandling apiTypeAnnotation = getErrorHandlingAnnotation(apiType);
+      if (apiTypeAnnotation != null) {
+        return Optional.of(apiTypeAnnotation);
       }
       for (Class<?> parentInterface : apiType.getInterfaces()) {
         Optional<ErrorHandling> errorHandling =
@@ -128,6 +132,19 @@ public class AnnotationErrorDecoder implements ErrorDecoder {
         return readErrorHandlingIncludingInherited(apiType.getSuperclass());
       }
       return Optional.empty();
+    }
+
+    private static ErrorHandling getErrorHandlingAnnotation(AnnotatedElement element) {
+      ErrorHandling annotation = element.getAnnotation(ErrorHandling.class);
+      if (annotation == null) {
+        for (Annotation metaAnnotation : element.getAnnotations()) {
+          annotation = metaAnnotation.annotationType().getAnnotation(ErrorHandling.class);
+          if (annotation != null) {
+            break;
+          }
+        }
+      }
+      return annotation;
     }
 
     static ErrorHandlingDefinition readAnnotation(ErrorHandling errorHandling,

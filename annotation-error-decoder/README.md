@@ -15,7 +15,7 @@ GitHub github = Feign.builder()
 ```
 
 ## Leveraging the annotations and priority order
-For annotation decoding to work, the class must be annotated with `@ErrorHandling` tags.
+For annotation decoding to work, the class must be annotated with `@ErrorHandling` tags or meta-annotations.
 The tags are valid in both the class level as well as method level. They will be treated from 'most specific' to 
 'least specific' in the following order:
 * A code specific exception defined on the method 
@@ -247,5 +247,113 @@ interface GitHub3 extends FeignClientBase {
     )
     @RequestLine("GET /repos/{owner}/{repo}/contributors")
     List<Contributor> contributors(@Param("owner") String owner, @Param("repo") String repo);
+}
+```
+
+## Meta-annotations
+When you want to share the same configuration of one `@ErrorHandling` annotation the `@ErrorHandling` annotation 
+can be moved to a meta-annotation. Then later on this meta-annotation can be used on a method or at class level to 
+reduce the amount duplicated code. A meta-annotation is a special annotation that contains the `@ErrorHandling` 
+annotation and possibly other annotations, e.g. Spring-Rest annotations.
+
+There are some limitations and rules to keep in mind when using meta-annotation:
+- inheritance for meta-annotations when using interface inheritance is supported and is following the same rules as for
+  interface inheritance (see above)
+  - `@ErrorHandling` has **precedence** over any meta-annotation when placed together on a class or method
+  - a meta-annotation on a child interface (method or class) has **precedence** over the error handling defined in the 
+    parent interface
+- having a meta-annotation on a meta-annotation is not supported, only the annotations on a type are checked for a 
+  `@ErrorHandling`
+- when multiple meta-annotations with an `@ErrorHandling` annotation are present on a class or method the first one
+  which is returned by java API is used to figure out the error handling, the others are not considered, so it is
+  advisable to have only one meta-annotation on each method or class as the order is not guaranteed. 
+- **no merging** of configurations is supported, e.g. multiple meta-annotations on the same type, meta-annotation with 
+  `@ErrorHandling` on the same type
+
+Example:
+
+Let's assume multiple methods need to handle the response-code `404` in the same way but differently what is 
+specified in the `@ErrorHandling` annotation on the class-level. In that case, to avoid also duplicate annotation definitions
+on the affected methods a meta-annotation can reduce the amount of code to be written to handle this `404` differently.
+
+In the following code the status-code `404` is handled on a class level which throws an `UnknownItemException` for all
+methods inside this interface. For the methods `contributors` and `languages` a different exceptions needs to be thrown,
+in this case it is a `NoDataFoundException`. The `teams`method will still use the exception defined by the class-level
+error handling annotation. To simplify the code a meta-annotation can be created and be used in the interface to keep 
+the interface small and readable.
+
+```java
+@ErrorHandling(
+    codeSpecific = {
+        @ErrorCodes(codes = {404}, generate = NoDataFoundException.class),
+    },
+    defaultException = GithubRemoteException.class)
+@Retention(RetentionPolicy.RUNTIME)
+@interface NoDataErrorHandling {
+}
+```
+
+Having this meta-annotation in place it can be used to transform the interface into a much smaller one, keeping the same
+behavior.
+- `contributers` will throw a `NoDataFoundException` for status code `404` as defined on method level and a 
+  `GithubRemoteException` for all other status codes
+- `languages` will throw  a `NoDataFoundException` for status code `404` as defined on method level and a 
+  `GithubRemoteException` for all other status codes
+- `teams` will throw  a `UnknownItemException` for status code `404` as defined on class level and a  
+  `ClassLevelDefaultException` for all other status codes
+
+Before:
+```java
+@ErrorHandling(codeSpecific =
+    {
+        @ErrorCodes( codes = {404}, generate = UnknownItemException.class)
+    },
+    defaultException = ClassLevelDefaultException.class
+)
+interface GitHub {
+    @ErrorHandling(codeSpecific =
+        {
+            @ErrorCodes( codes = {404}, generate = NoDataFoundException.class)
+        },
+        defaultException = GithubRemoteException.class
+    )
+    @RequestLine("GET /repos/{owner}/{repo}/contributors")
+    List<Contributor> contributors(@Param("owner") String owner, @Param("repo") String repo);
+
+    @ErrorHandling(codeSpecific =
+        {
+            @ErrorCodes( codes = {404}, generate = NoDataFoundException.class)
+        },
+        defaultException = GithubRemoteException.class
+    )
+    @RequestLine("GET /repos/{owner}/{repo}/languages")
+    Map<String, Integer> languages(@Param("owner") String owner, @Param("repo") String repo);
+    
+    @ErrorHandling
+    @RequestLine("GET /repos/{owner}/{repo}/team")
+    List<Team> languages(@Param("owner") String owner, @Param("repo") String repo);
+}
+```
+
+After:
+```java
+@ErrorHandling(codeSpecific =
+    {
+        @ErrorCodes( codes = {404}, generate = UnknownItemException.class)
+    },
+    defaultException = ClassLevelDefaultException.class
+)
+interface GitHub {
+    @NoDataErrorHandling
+    @RequestLine("GET /repos/{owner}/{repo}/contributors")
+    List<Contributor> contributors(@Param("owner") String owner, @Param("repo") String repo);
+
+    @NoDataErrorHandling
+    @RequestLine("GET /repos/{owner}/{repo}/languages")
+    Map<String, Integer> languages(@Param("owner") String owner, @Param("repo") String repo);
+    
+    @ErrorHandling
+    @RequestLine("GET /repos/{owner}/{repo}/team")
+    List<Team> languages(@Param("owner") String owner, @Param("repo") String repo);
 }
 ```
