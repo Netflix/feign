@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -155,7 +155,7 @@ public class ReflectiveFeign extends Feign {
         if (!md.formParams().isEmpty() && md.template().bodyTemplate() == null) {
           buildTemplate =
               new BuildFormEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
-        } else if (md.bodyIndex() != null) {
+        } else if (md.bodyIndex() != null || md.alwaysEncodeBody()) {
           buildTemplate = new BuildEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
         } else {
           buildTemplate = new BuildTemplateByResolvingArgs(md, queryMapEncoder, target);
@@ -379,10 +379,22 @@ public class ReflectiveFeign extends Feign {
     protected RequestTemplate resolve(Object[] argv,
                                       RequestTemplate mutable,
                                       Map<String, Object> variables) {
-      Object body = argv[metadata.bodyIndex()];
-      checkArgument(body != null, "Body parameter %s was null", metadata.bodyIndex());
+
+      boolean alwaysEncodeBody = mutable.methodMetadata().alwaysEncodeBody();
+
+      Object body = null;
+      if (!alwaysEncodeBody) {
+        body = argv[metadata.bodyIndex()];
+        checkArgument(body != null, "Body parameter %s was null", metadata.bodyIndex());
+      }
+
       try {
-        encoder.encode(body, metadata.bodyType(), mutable);
+        if (alwaysEncodeBody) {
+          body = argv == null ? new Object[0] : argv;
+          encoder.encode(body, Object[].class, mutable);
+        } else {
+          encoder.encode(body, metadata.bodyType(), mutable);
+        }
       } catch (EncodeException e) {
         throw e;
       } catch (RuntimeException e) {

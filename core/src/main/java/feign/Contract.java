@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -36,6 +36,33 @@ public interface Contract {
   List<MethodMetadata> parseAndValidateMetadata(Class<?> targetType);
 
   abstract class BaseContract implements Contract {
+
+    private boolean alwaysEncodeBody;
+
+    /**
+     * Returns whether a custom {@link feign.codec.Encoder}, if set for the client, should always be
+     * in charge of defining the request message body. See {@link #alwaysEncodeBody(boolean)} for
+     * further details.
+     *
+     * @return whether a custom {@link feign.codec.Encoder}, if set for the client, should always be
+     *         in charge of defining the request message body.
+     */
+    protected boolean alwaysEncodeBody() {
+      return alwaysEncodeBody;
+    }
+
+    /**
+     * Sets whether a custom {@link feign.codec.Encoder}, if set for the client, should always be in
+     * charge of defining the request message body. If set to false, the encoder will only be called
+     * if one, and only one, body parameter is provided and the method is not configured to have the
+     * body set via Feign annotations. This is false by default.
+     *
+     * @param alwaysEncodeBody if true, custom {@link feign.codec.Encoder} will always be in charge
+     *        of defining the request message body
+     */
+    protected void alwaysEncodeBody(boolean alwaysEncodeBody) {
+      this.alwaysEncodeBody = alwaysEncodeBody;
+    }
 
     /**
      * @param targetType {@link feign.Target#type() type} of the Feign interface.
@@ -84,6 +111,7 @@ public interface Contract {
       data.method(method);
       data.returnType(Types.resolve(targetType, targetType, method.getGenericReturnType()));
       data.configKey(Feign.configKey(targetType, method));
+      data.alwaysEncodeBody(this.alwaysEncodeBody);
 
       if (targetType.getInterfaces().length == 1) {
         processAnnotationOnClass(data, targetType.getInterfaces()[0]);
@@ -121,7 +149,7 @@ public interface Contract {
           if (data.isAlreadyProcessed(i)) {
             checkState(data.formParams().isEmpty() || data.bodyIndex() == null,
                 "Body parameters cannot be used with form parameters.%s", data.warnings());
-          } else {
+          } else if (!data.alwaysEncodeBody()) {
             checkState(data.formParams().isEmpty(),
                 "Body parameters cannot be used with form parameters.%s", data.warnings());
             checkState(data.bodyIndex() == null,
