@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -13,17 +13,6 @@
  */
 package feign.micrometer;
 
-
-import java.lang.reflect.Method;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import feign.MethodMetadata;
-import feign.Target;
-import io.micrometer.core.instrument.Tag;
-import io.micrometer.core.instrument.Tags;
 
 public final class FeignMetricName implements MetricName {
 
@@ -46,33 +35,10 @@ public final class FeignMetricName implements MetricName {
   }
 
   @Override
-  public Tags tag(MethodMetadata methodMetadata, Target<?> target, Tag... tags) {
-    return tag(methodMetadata.targetType(), methodMetadata.method(), target.url(), tags);
-  }
-
-  @Override
-  public Tags tag(Class<?> targetType, Method method, String url, Tag... extraTags) {
-    List<Tag> tags = new ArrayList<>();
-    tags.add(Tag.of("client", targetType.getName()));
-    tags.add(Tag.of("method", method.getName()));
-    tags.add(Tag.of("host", extractHost(url)));
-    tags.addAll(Arrays.asList(extraTags));
-    return Tags.of(tags);
-  }
-
-  private String extractHost(final String targetUrl) {
-    try {
-      String host = new URI(targetUrl).getHost();
-      if (host != null)
-        return host;
-    } catch (final URISyntaxException e) {
+  public String name(Throwable e) {
+    if (e == null) {
+      return name();
     }
-
-    // can't get the host, in that case, just read first 20 chars from url
-    return targetUrl.length() <= 20
-        ? targetUrl
-        : targetUrl.substring(0, 20);
+    return name("exception");
   }
-
-
 }

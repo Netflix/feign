@@ -13,15 +13,14 @@
  */
 package feign.micrometer;
 
-import java.io.IOException;
-import feign.Client;
-import feign.FeignException;
-import feign.Request;
+import feign.*;
 import feign.Request.Options;
-import feign.RequestTemplate;
-import feign.Response;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
+import java.io.IOException;
+import static feign.micrometer.MetricTagResolver.EMPTY_TAGS_ARRAY;
 
 /**
  * Warp feign {@link Client} with metrics.
@@ -31,52 +30,84 @@ public class MeteredClient implements Client {
   private final Client client;
   private final MeterRegistry meterRegistry;
   private final MetricName metricName;
+  private final MetricTagResolver metricTagResolver;
 
   public MeteredClient(Client client, MeterRegistry meterRegistry) {
-    this(client, meterRegistry, new FeignMetricName(Client.class));
+    this(client, meterRegistry, new FeignMetricName(Client.class), new FeignMetricTagResolver());
   }
 
-  public MeteredClient(Client client, MeterRegistry meterRegistry, MetricName metricName) {
+  public MeteredClient(Client client,
+      MeterRegistry meterRegistry,
+      MetricName metricName,
+      MetricTagResolver metricTagResolver) {
     this.client = client;
     this.meterRegistry = meterRegistry;
     this.metricName = metricName;
+    this.metricTagResolver = metricTagResolver;
   }
 
   @Override
   public Response execute(Request request, Options options) throws IOException {
-    final RequestTemplate template = request.requestTemplate();
-
+    final Timer.Sample sample = Timer.start(meterRegistry);
+    Timer timer = null;
     try {
-      return meterRegistry.timer(
-          metricName.name(),
-          metricName.tag(template.methodMetadata(), template.feignTarget()))
-          .recordCallable(() -> {
-            Response response = client.execute(request, options);
-            meterRegistry.counter(
-                metricName.name("http_response_code"),
-                metricName.tag(
-                    template.methodMetadata(),
-                    template.feignTarget(),
-                    Tag.of("http_status", String.valueOf(response.status())),
-                    Tag.of("status_group", response.status() / 100 + "xx")))
-                .increment();
-            return response;
-          });
+      final Response response = client.execute(request, options);
+      countResponseCode(request, response, options, response.status(), null);
+      timer = createTimer(request, response, options, null);
+      sample.stop(timer);
+      return response;
     } catch (FeignException e) {
-      meterRegistry.counter(
-          metricName.name("http_response_code"),
-          metricName.tag(
-              template.methodMetadata(),
-              template.feignTarget(),
-              Tag.of("http_status", String.valueOf(e.status())),
-              Tag.of("status_group", e.status() / 100 + "xx")))
-          .increment();
+      timer = createTimer(request, null, options, e);
+      countResponseCode(request, null, options, e.status(), e);
       throw e;
     } catch (IOException | RuntimeException e) {
+      timer = createTimer(request, null, options, e);
       throw e;
     } catch (Exception e) {
+      timer = createTimer(request, null, options, e);
       throw new IOException(e);
+    } finally {
+      if (timer == null) {
+        timer = createTimer(request, null, options, null);
+      }
+      sample.stop(timer);
     }
   }
 
+  protected void countResponseCode(Request request,
+                                   Response response,
+                                   Options options,
+                                   int responseStatus,
+                                   Exception e) {
+    final Tag[] extraTags = extraTags(request, response, options, e);
+    final RequestTemplate template = request.requestTemplate();
+    final Tags allTags = metricTagResolver
+        .tag(template.methodMetadata(), template.feignTarget(), e,
+            new Tag[] {Tag.of("http_status", String.valueOf(responseStatus)),
+                Tag.of("status_group", responseStatus / 100 + "xx"),
+                Tag.of("uri", template.path())})
+        .and(extraTags);
+    meterRegistry.counter(
+        metricName.name("http_response_code"),
+        allTags)
+        .increment();
+  }
+
+  protected Timer createTimer(Request request,
+                              Response response,
+                              Options options,
+                              Exception e) {
+    final RequestTemplate template = request.requestTemplate();
+    final Tags allTags = metricTagResolver
+        .tag(template.methodMetadata(), template.feignTarget(), e, Tag.of("uri", template.path()))
+        .and(extraTags(request, response, options, e));
+    return meterRegistry.timer(metricName.name(e), allTags);
+  }
+
+  protected Tag[] extraTags(Request request,
+                            Response response,
+                            Options options,
+                            Exception e) {
+    return EMPTY_TAGS_ARRAY;
+  }
 }
