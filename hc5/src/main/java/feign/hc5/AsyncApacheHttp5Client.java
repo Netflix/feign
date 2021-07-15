@@ -183,8 +183,7 @@ public final class AsyncApacheHttp5Client implements AsyncClient<HttpClientConte
         .reason(reason)
         .headers(headers)
         .request(request)
-        .body(httpResponse
-            .getBodyBytes())
+        .body(httpResponse.getBodyBytes())
         .build();
   }
 

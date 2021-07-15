@@ -228,6 +228,7 @@ public final class ApacheHttp5Client implements Client {
       @Override
       public void close() throws IOException {
         EntityUtils.consume(entity);
+        httpResponse.close();
       }
     };
   }
