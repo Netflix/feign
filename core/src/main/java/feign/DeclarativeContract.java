@@ -13,13 +13,13 @@
  */
 package feign;
 
+import feign.Contract.BaseContract;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import feign.Contract.BaseContract;
 
 /**
  * {@link Contract} base implementation that works by declaring witch annotations should be

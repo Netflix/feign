@@ -306,6 +306,25 @@ public final class Types {
     }
   }
 
+  public static Type resolveReturnType(Type baseType, Type overridingType) {
+    if (baseType instanceof Class && overridingType instanceof Class &&
+        ((Class<?>) baseType).isAssignableFrom((Class<?>) overridingType)) {
+      // NOTE: javac generates multiple same methods for multiple inherited generic interfaces
+      return overridingType;
+    }
+    if (baseType instanceof Class && overridingType instanceof ParameterizedType) {
+      // NOTE: javac will generate multiple methods with different return types
+      // base interface declares generic method, override declares parameterized generic method
+      return overridingType;
+    }
+    if (baseType instanceof Class && overridingType instanceof TypeVariable) {
+      // NOTE: javac will generate multiple methods with different return types
+      // base interface declares non generic method, override declares generic method
+      return overridingType;
+    }
+    return baseType;
+  }
+
   static final class ParameterizedTypeImpl implements ParameterizedType {
 
     private final Type ownerType;
