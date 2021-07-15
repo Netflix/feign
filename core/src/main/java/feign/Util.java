@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -30,15 +30,7 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -360,4 +352,33 @@ public class Util {
   public static boolean isBlank(String value) {
     return value == null || value.isEmpty();
   }
+
+  /**
+   * Copy entire map of string collection.
+   *
+   * The copy is unmodifiable map of unmodifiable collections.
+   *
+   * @param map string collection map
+   * @return copy of the map or an empty map if the map is null.
+   */
+  public static Map<String, Collection<String>> caseInsensitiveCopyOf(Map<String, Collection<String>> map) {
+    if (map == null) {
+      return Collections.emptyMap();
+    }
+
+    Map<String, Collection<String>> result =
+        new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    for (Map.Entry<String, Collection<String>> entry : map.entrySet()) {
+      String key = entry.getKey();
+      if (!result.containsKey(key)) {
+        result.put(key.toLowerCase(Locale.ROOT), new LinkedList<>());
+      }
+      result.get(key).addAll(entry.getValue());
+    }
+    result.replaceAll((key, value) -> Collections.unmodifiableCollection(value));
+
+    return Collections.unmodifiableMap(result);
+  }
+
 }

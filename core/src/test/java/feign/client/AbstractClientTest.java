@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -14,8 +14,7 @@
 package feign.client;
 
 import static feign.Util.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.*;
 import static org.junit.Assert.assertEquals;
 import feign.Client;
 import feign.CollectionFormat;
@@ -89,8 +88,12 @@ public abstract class AbstractClientTest {
     assertThat(response.status()).isEqualTo(200);
     assertThat(response.reason()).isEqualTo("OK");
     assertThat(response.headers())
-        .containsEntry("Content-Length", Collections.singletonList("3"))
-        .containsEntry("Foo", Collections.singletonList("Bar"));
+        .hasEntrySatisfying("Content-Length", value -> {
+          assertThat(value).contains("3");
+        })
+        .hasEntrySatisfying("Foo", value -> {
+          assertThat(value).contains("Bar");
+        });
     assertThat(response.body().asInputStream())
         .hasSameContentAs(new ByteArrayInputStream("foo".getBytes(UTF_8)));
 

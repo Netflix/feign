@@ -43,9 +43,8 @@ import static feign.ExceptionPropagationPolicy.UNWRAP;
 import static feign.Util.UTF_8;
 import static feign.assertj.MockWebServerAssertions.assertThat;
 import static org.assertj.core.data.MapEntry.entry;
-import static org.hamcrest.CoreMatchers.isA;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 @SuppressWarnings("deprecation")
 public class FeignTest {
@@ -637,8 +636,9 @@ public class FeignTest {
         .client((request, options) -> response)
         .target(TestInterface.class, "http://localhost:" + server.getPort());
 
-    assertEquals(api.response().headers().get("Location"),
-        Collections.singletonList("http://bar.com"));
+    assertThat(api.response().headers()).hasEntrySatisfying("Location", value -> {
+      assertThat(value).contains("http://bar.com");
+    });
   }
 
   private static class MockRetryer implements Retryer {

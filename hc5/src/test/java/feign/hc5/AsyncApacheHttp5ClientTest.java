@@ -509,8 +509,9 @@ public class AsyncApacheHttp5ClientTest {
         .client(new AsyncClient.Default<>((request, options) -> response, execs))
         .target(TestInterfaceAsync.class, "http://localhost:" + server.getPort());
 
-    assertEquals(Collections.singletonList("http://bar.com"),
-        unwrap(api.response()).headers().get("Location"));
+    assertThat(unwrap(api.response()).headers()).hasEntrySatisfying("Location", value -> {
+      assertThat(value).contains("http://bar.com");
+    });
 
     execs.shutdown();
   }

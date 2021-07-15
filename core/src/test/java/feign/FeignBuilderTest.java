@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -121,9 +121,9 @@ public class FeignBuilderTest {
 
     Response response = noFollowApi.defaultMethodPassthrough();
     assertThat(response.status()).isEqualTo(302);
-    assertThat(response.headers().getOrDefault("Location", null))
-        .isNotNull()
-        .isEqualTo(Collections.singletonList("/"));
+    assertThat(response.headers()).hasEntrySatisfying("Location", value -> {
+      assertThat(value).contains("/");
+    });
 
     server.enqueue(new MockResponse().setResponseCode(302).addHeader("Location", "/"));
     server.enqueue(new MockResponse().setResponseCode(200));

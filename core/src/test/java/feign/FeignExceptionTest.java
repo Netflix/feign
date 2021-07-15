@@ -110,6 +110,35 @@ public class FeignExceptionTest {
         .isNotEqualTo("[400] during [GET] to [/home] [methodKey]: [response]");
   }
 
+  @Test
+  public void canGetResponseHeadersFromException() {
+    Request request = Request.create(
+        Request.HttpMethod.GET,
+        "/home",
+        Collections.emptyMap(),
+        "data".getBytes(StandardCharsets.UTF_8),
+        StandardCharsets.UTF_8,
+        null);
+
+    Map<String, Collection<String>> responseHeaders = new HashMap<>();
+    responseHeaders.put("Content-Type", Collections.singletonList("text/plain"));
+    responseHeaders.put("Cookie", Arrays.asList("cookie1", "cookie2"));
+
+    Response response = Response.builder()
+        .request(request)
+        .body("some text", StandardCharsets.UTF_8)
+        .headers(responseHeaders)
+        .build();
+
+    FeignException exception = FeignException.errorStatus("methodKey", response);
+    assertThat(exception.responseHeaders())
+        .hasEntrySatisfying("Content-Type", value -> {
+          assertThat(value).contains("text/plain");
+        }).hasEntrySatisfying("Cookie", value -> {
+          assertThat(value).contains("cookie1", "cookie2");
+        });
+  }
+
   @Test(expected = NullPointerException.class)
   public void nullRequestShouldThrowNPEwThrowable() {
     new Derived(404, "message", null, new Throwable());
@@ -117,7 +146,7 @@ public class FeignExceptionTest {
 
   @Test(expected = NullPointerException.class)
   public void nullRequestShouldThrowNPEwThrowableAndBytes() {
-    new Derived(404, "message", null, new Throwable(), new byte[1]);
+    new Derived(404, "message", null, new Throwable(), new byte[1], Collections.emptyMap());
   }
 
   @Test(expected = NullPointerException.class)
@@ -127,7 +156,7 @@ public class FeignExceptionTest {
 
   @Test(expected = NullPointerException.class)
   public void nullRequestShouldThrowNPEwBytes() {
-    new Derived(404, "message", null, new byte[1]);
+    new Derived(404, "message", null, new byte[1], Collections.emptyMap());
   }
 
   static class Derived extends FeignException {
@@ -136,16 +165,18 @@ public class FeignExceptionTest {
       super(status, message, request, cause);
     }
 
-    public Derived(int status, String message, Request request, Throwable cause, byte[] content) {
-      super(status, message, request, cause, content);
+    public Derived(int status, String message, Request request, Throwable cause, byte[] content,
+        Map<String, Collection<String>> headers) {
+      super(status, message, request, cause, content, headers);
     }
 
     public Derived(int status, String message, Request request) {
       super(status, message, request);
     }
 
-    public Derived(int status, String message, Request request, byte[] content) {
-      super(status, message, request, content);
+    public Derived(int status, String message, Request request, byte[] content,
+        Map<String, Collection<String>> headers) {
+      super(status, message, request, content, headers);
     }
   }
 

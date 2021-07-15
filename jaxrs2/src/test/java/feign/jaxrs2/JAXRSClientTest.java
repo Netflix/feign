@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -13,31 +13,22 @@
  */
 package feign.jaxrs2;
 
-import static feign.Util.UTF_8;
-import static java.util.Arrays.asList;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import feign.Feign;
+import feign.*;
 import feign.Feign.Builder;
-import feign.Headers;
-import feign.RequestLine;
-import feign.Response;
-import feign.Util;
 import feign.assertj.MockWebServerAssertions;
 import feign.client.AbstractClientTest;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.util.Collections;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.HeaderParam;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.ProcessingException;
 import feign.jaxrs.JAXRSContract;
 import okhttp3.mockwebserver.MockResponse;
 import org.assertj.core.data.MapEntry;
 import org.junit.Assume;
 import org.junit.Test;
+import javax.ws.rs.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.Collections;
+import static feign.Util.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
 
 /**
  * Tests client-specific behavior, such as ensuring Content-Length is sent when specified.
@@ -102,8 +93,11 @@ public class JAXRSClientTest extends AbstractClientTest {
     assertThat(response.status()).isEqualTo(200);
     assertThat(response.reason()).isEqualTo("OK");
     assertThat(response.headers())
-        .containsEntry("Content-Length", asList("3"))
-        .containsEntry("Foo", asList("Bar"));
+        .hasEntrySatisfying("Content-Length", value -> {
+          assertThat(value).contains("3");
+        }).hasEntrySatisfying("Foo", value -> {
+          assertThat(value).contains("Bar");
+        });
     assertThat(response.body().asInputStream())
         .hasSameContentAs(new ByteArrayInputStream("foo".getBytes(UTF_8)));
 
