@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -92,5 +92,9 @@ public class MeteredInvocationHandleFactory implements InvocationHandlerFactory 
     };
   }
 
-
+  @Override
+  public InvocationHandlerFactory withFeignFactory(SharedParameters.FeignFactory feignFactory) {
+    return new MeteredInvocationHandleFactory(invocationHandler.withFeignFactory(feignFactory),
+        metricRegistry, metricSuppliers);
+  }
 }

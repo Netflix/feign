@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -97,7 +97,8 @@ public interface Contract {
       if (data.isIgnored()) {
         return data;
       }
-      checkState(data.template().method() != null,
+      checkState(data.isConfigurationMethod() ||
+          data.template().method() != null,
           "Method %s not annotated with HTTP method type (ex. GET, POST)%s",
           data.configKey(), data.warnings());
       final Class<?>[] parameterTypes = method.getParameterTypes();
@@ -286,7 +287,8 @@ public interface Contract {
         if (expander != Param.ToStringExpander.class) {
           data.indexToExpanderClass().put(paramIndex, expander);
         }
-        if (!data.template().hasRequestVariable(name)) {
+        if (!data.isConfigurationMethod() &&
+            !data.template().hasRequestVariable(name)) {
           data.formParams().add(name);
         }
       });
@@ -300,6 +302,15 @@ public interface Contract {
         checkState(data.headerMapIndex() == null,
             "HeaderMap annotation was present on multiple parameters.");
         data.headerMapIndex(paramIndex);
+      });
+      super.registerMethodAnnotation(Shared.class, (ann, data) -> {
+        boolean allParametersAreAnnotated = Arrays.stream(data.method().getParameters())
+            .allMatch(param -> param.isAnnotationPresent(Param.class));
+        checkState(allParametersAreAnnotated,
+            "Param annotation was not present on some parameters of method %s", data.configKey());
+        checkState(data.returnType().equals(data.targetType()),
+            "Shared method %s return type must be its own interface", data.configKey());
+        data.setAsConfigurationMethod();
       });
     }
 

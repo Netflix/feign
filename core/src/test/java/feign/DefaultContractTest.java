@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -17,8 +17,12 @@ import static feign.assertj.FeignAssertions.assertThat;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.MapEntry.entry;
+import static org.hamcrest.CoreMatchers.endsWith;
+import static org.hamcrest.CoreMatchers.startsWith;
 import com.google.gson.reflect.TypeToken;
 import org.assertj.core.api.Fail;
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.Matcher;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -955,5 +959,33 @@ public class DefaultContractTest {
     Response findAllClientsByUid2(@Category(value = String.class) String uid,
                                   Integer limit,
                                   @SuppressWarnings({"a"}) Integer offset);
+  }
+
+  @Test
+  public void errorOnSharedMethodWithUnannotatedParameters() {
+    thrown.expect(IllegalStateException.class);
+    thrown
+        .expectMessage(startsWith("Param annotation was not present on some parameters of method"));
+
+    contract.parseAndValidateMetadata(SharedMethodWithUnannotatedParameters.class);
+  }
+
+  @Test
+  public void errorOnSharedMethodWithUnexpectedReturnType() {
+    thrown.expect(IllegalStateException.class);
+    thrown.expectMessage(startsWith("Shared method"));
+    thrown.expectMessage(endsWith("return type must be its own interface"));
+
+    contract.parseAndValidateMetadata(SharedMethodWithVoidReturnType.class);
+  }
+
+  interface SharedMethodWithUnannotatedParameters {
+    @Shared
+    SharedMethodWithUnannotatedParameters configure(String param);
+  }
+
+  interface SharedMethodWithVoidReturnType {
+    @Shared
+    void configure(@Param("param") String param);
   }
 }

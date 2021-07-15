@@ -44,8 +44,7 @@ import static feign.Util.UTF_8;
 import static feign.assertj.MockWebServerAssertions.assertThat;
 import static org.assertj.core.data.MapEntry.entry;
 import static org.hamcrest.CoreMatchers.isA;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 @SuppressWarnings("deprecation")
 public class FeignTest {
@@ -905,6 +904,66 @@ public class FeignTest {
         .hasQueryParams("/");
   }
 
+  @Test
+  public void sharedMethodCreatesNewFeignInstance() {
+    TestInterface initialApi = new TestInterfaceBuilder()
+        .target("http://localhost:" + server.getPort());
+
+    TestInterface configuredApi = initialApi.configure("sharedParam");
+
+    assertNotSame(initialApi, configuredApi);
+  }
+
+  @Test
+  public void sharedPathParameterIsIncluded() throws Exception {
+    TestInterface api = new TestInterfaceBuilder()
+        .target("http://localhost:" + server.getPort())
+        .configure("sharedValue");
+
+    server.enqueue(new MockResponse());
+    api.sharedPathParam("exclusiveValue");
+    assertThat(server.takeRequest())
+        .hasQueryParams("/sharedValue/exclusiveValue");
+  }
+
+  @Test
+  public void sharedPathParameterIsOverridden() throws Exception {
+    TestInterface api = new TestInterfaceBuilder()
+        .target("http://localhost:" + server.getPort())
+        .configure("sharedValue");
+
+    server.enqueue(new MockResponse());
+    api.sharedOverridablePathParam("differentSharedValue", "exclusiveValue");
+    assertThat(server.takeRequest())
+        .hasQueryParams("/differentSharedValue/exclusiveValue");
+  }
+
+  @Test
+  public void sharedHeaderParameterIsIncluded() throws Exception {
+    TestInterface api = new TestInterfaceBuilder()
+        .target("http://localhost:" + server.getPort())
+        .configure("sharedValue");
+
+    server.enqueue(new MockResponse());
+    api.sharedHeaderParam("exclusiveValue");
+    assertThat(server.takeRequest())
+        .hasHeaders(
+            entry("sharedheader", Collections.singletonList("sharedValue")),
+            entry("exclusiveheader", Collections.singletonList("exclusiveValue")));
+  }
+
+  @Test
+  public void sharedBodyParameterIsIncluded() throws Exception {
+    TestInterface api = new TestInterfaceBuilder()
+        .target("http://localhost:" + server.getPort())
+        .configure("sharedValue");
+
+    server.enqueue(new MockResponse());
+    api.sharedBodyParam("exclusiveValue");
+    assertThat(server.takeRequest())
+        .hasBody("{\"sharedProperty\": \"sharedValue\", \"requestProperty\": \"exclusiveValue\"}");
+  }
+
   interface TestInterface {
 
     @RequestLine("POST /")
@@ -989,6 +1048,27 @@ public class FeignTest {
 
     @RequestLine("GET /")
     void queryMapPropertyInheritence(@QueryMap ChildPojo object);
+
+    @Shared
+    TestInterface configure(@Param("sharedParam") String sharedParam);
+
+    @RequestLine("GET /{sharedParam}/{exclusiveParam}")
+    void sharedPathParam(@Param("exclusiveParam") String exclusiveParam);
+
+    @RequestLine("GET /{sharedParam}/{exclusiveParam}")
+    void sharedOverridablePathParam(@Param("sharedParam") String sharedParam,
+                                    @Param("exclusiveParam") String exclusiveParam);
+
+    @RequestLine("POST /")
+    @Headers({
+        "SharedHeader: {sharedParam}",
+        "ExclusiveHeader: {exclusiveParam}"
+    })
+    void sharedHeaderParam(@Param("exclusiveParam") String exclusiveParam);
+
+    @RequestLine("POST /")
+    @Body("%7B\"sharedProperty\": \"{sharedParam}\", \"requestProperty\": \"{exclusiveParam}\"%7D")
+    void sharedBodyParam(@Param("exclusiveParam") String exclusiveParam);
 
     class DateToMillis implements Param.Expander {
 

@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -39,6 +39,11 @@ public class ReflectiveFeign extends Feign {
     this.queryMapEncoder = queryMapEncoder;
   }
 
+  public ReflectiveFeign withSharedParameters(SharedParameters sharedParameters) {
+    return new ReflectiveFeign(targetToHandlersByName.withSharedParameters(sharedParameters),
+        factory, queryMapEncoder);
+  }
+
   /**
    * creates an api binding to the {@code target}. As this invokes reflection, care should be taken
    * to cache the result.
@@ -61,7 +66,8 @@ public class ReflectiveFeign extends Feign {
         methodToHandler.put(method, nameToHandler.get(Feign.configKey(target.type(), method)));
       }
     }
-    InvocationHandler handler = factory.create(target, methodToHandler);
+    InvocationHandler handler = factory.withFeignFactory(this::withSharedParameters)
+        .create(target, methodToHandler);
     T proxy = (T) Proxy.newProxyInstance(target.type().getClassLoader(),
         new Class<?>[] {target.type()}, handler);
 
@@ -75,10 +81,13 @@ public class ReflectiveFeign extends Feign {
 
     private final Target target;
     private final Map<Method, MethodHandler> dispatch;
+    private final SharedParameters.FeignFactory feignFactory;
 
-    FeignInvocationHandler(Target target, Map<Method, MethodHandler> dispatch) {
+    FeignInvocationHandler(Target target, Map<Method, MethodHandler> dispatch,
+        SharedParameters.FeignFactory feignFactory) {
       this.target = checkNotNull(target, "target");
       this.dispatch = checkNotNull(dispatch, "dispatch for %s", target);
+      this.feignFactory = checkNotNull(feignFactory, "feign factory");
     }
 
     @Override
@@ -97,7 +106,14 @@ public class ReflectiveFeign extends Feign {
         return toString();
       }
 
-      return dispatch.get(method).invoke(args);
+      MethodHandler methodHandler = dispatch.get(method);
+      Object invocationValue = methodHandler.invoke(args);
+
+      if (methodHandler instanceof SharedParameters.SharedMethodHandler) {
+        return feignFactory.create((SharedParameters) invocationValue).newInstance(target);
+      } else {
+        return invocationValue;
+      }
     }
 
     @Override
@@ -129,6 +145,7 @@ public class ReflectiveFeign extends Feign {
     private final ErrorDecoder errorDecoder;
     private final QueryMapEncoder queryMapEncoder;
     private final SynchronousMethodHandler.Factory factory;
+    private final SharedParameters sharedParameters;
 
     ParseHandlersByName(
         Contract contract,
@@ -138,6 +155,19 @@ public class ReflectiveFeign extends Feign {
         QueryMapEncoder queryMapEncoder,
         ErrorDecoder errorDecoder,
         SynchronousMethodHandler.Factory factory) {
+      this(contract, options, encoder, decoder, queryMapEncoder, errorDecoder, factory,
+          new SharedParameters());
+    }
+
+    ParseHandlersByName(
+        Contract contract,
+        Options options,
+        Encoder encoder,
+        Decoder decoder,
+        QueryMapEncoder queryMapEncoder,
+        ErrorDecoder errorDecoder,
+        SynchronousMethodHandler.Factory factory,
+        SharedParameters sharedParameters) {
       this.contract = contract;
       this.options = options;
       this.factory = factory;
@@ -145,6 +175,12 @@ public class ReflectiveFeign extends Feign {
       this.queryMapEncoder = queryMapEncoder;
       this.encoder = checkNotNull(encoder, "encoder");
       this.decoder = checkNotNull(decoder, "decoder");
+      this.sharedParameters = sharedParameters;
+    }
+
+    public ParseHandlersByName withSharedParameters(SharedParameters sharedParameters) {
+      return new ParseHandlersByName(contract, options, encoder, decoder, queryMapEncoder,
+          errorDecoder, factory, sharedParameters);
     }
 
     public Map<String, MethodHandler> apply(Target target) {
@@ -152,13 +188,19 @@ public class ReflectiveFeign extends Feign {
       Map<String, MethodHandler> result = new LinkedHashMap<String, MethodHandler>();
       for (MethodMetadata md : metadata) {
         BuildTemplateByResolvingArgs buildTemplate;
+        if (md.isConfigurationMethod()) {
+          result.put(md.configKey(), sharedParameters.newHandler(md));
+          continue;
+        }
         if (!md.formParams().isEmpty() && md.template().bodyTemplate() == null) {
-          buildTemplate =
-              new BuildFormEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
+          buildTemplate = new BuildFormEncodedTemplateFromArgs(md, encoder, queryMapEncoder,
+              sharedParameters, target);
         } else if (md.bodyIndex() != null) {
-          buildTemplate = new BuildEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
+          buildTemplate = new BuildEncodedTemplateFromArgs(md, encoder, queryMapEncoder,
+              sharedParameters, target);
         } else {
-          buildTemplate = new BuildTemplateByResolvingArgs(md, queryMapEncoder, target);
+          buildTemplate = new BuildTemplateByResolvingArgs(md, queryMapEncoder,
+              sharedParameters, target);
         }
         if (md.isIgnored()) {
           result.put(md.configKey(), args -> {
@@ -180,12 +222,14 @@ public class ReflectiveFeign extends Feign {
     protected final MethodMetadata metadata;
     protected final Target<?> target;
     private final Map<Integer, Expander> indexToExpander = new LinkedHashMap<Integer, Expander>();
+    private final SharedParameters sharedParameters;
 
     private BuildTemplateByResolvingArgs(MethodMetadata metadata, QueryMapEncoder queryMapEncoder,
-        Target target) {
+        SharedParameters sharedParameters, Target target) {
       this.metadata = metadata;
       this.target = target;
       this.queryMapEncoder = queryMapEncoder;
+      this.sharedParameters = sharedParameters;
       if (metadata.indexToExpander() != null) {
         indexToExpander.putAll(metadata.indexToExpander());
         return;
@@ -215,7 +259,7 @@ public class ReflectiveFeign extends Feign {
         checkArgument(argv[urlIndex] != null, "URI parameter %s was null", urlIndex);
         mutable.target(String.valueOf(argv[urlIndex]));
       }
-      Map<String, Object> varBuilder = new LinkedHashMap<String, Object>();
+      Map<String, Object> varBuilder = new LinkedHashMap<String, Object>(sharedParameters.asMap());
       for (Entry<Integer, Collection<String>> entry : metadata.indexToName().entrySet()) {
         int i = entry.getKey();
         Object value = argv[entry.getKey()];
@@ -339,8 +383,9 @@ public class ReflectiveFeign extends Feign {
     private final Encoder encoder;
 
     private BuildFormEncodedTemplateFromArgs(MethodMetadata metadata, Encoder encoder,
-        QueryMapEncoder queryMapEncoder, Target target) {
-      super(metadata, queryMapEncoder, target);
+        QueryMapEncoder queryMapEncoder, SharedParameters sharedParameters,
+        Target target) {
+      super(metadata, queryMapEncoder, sharedParameters, target);
       this.encoder = encoder;
     }
 
@@ -370,8 +415,9 @@ public class ReflectiveFeign extends Feign {
     private final Encoder encoder;
 
     private BuildEncodedTemplateFromArgs(MethodMetadata metadata, Encoder encoder,
-        QueryMapEncoder queryMapEncoder, Target target) {
-      super(metadata, queryMapEncoder, target);
+        QueryMapEncoder queryMapEncoder, SharedParameters sharedParameters,
+        Target target) {
+      super(metadata, queryMapEncoder, sharedParameters, target);
       this.encoder = encoder;
     }
 

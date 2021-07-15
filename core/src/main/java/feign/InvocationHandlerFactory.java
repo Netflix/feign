@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2020 The Feign Authors
+ * Copyright 2012-2021 The Feign Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -24,6 +24,10 @@ public interface InvocationHandlerFactory {
 
   InvocationHandler create(Target target, Map<Method, MethodHandler> dispatch);
 
+  default InvocationHandlerFactory withFeignFactory(SharedParameters.FeignFactory feignFactory) {
+    return this;
+  }
+
   /**
    * Like {@link InvocationHandler#invoke(Object, java.lang.reflect.Method, Object[])}, except for a
    * single method.
@@ -33,11 +37,26 @@ public interface InvocationHandlerFactory {
     Object invoke(Object[] argv) throws Throwable;
   }
 
-  static final class Default implements InvocationHandlerFactory {
+  final class Default implements InvocationHandlerFactory {
+
+    private final SharedParameters.FeignFactory feignFactory;
+
+    public Default() {
+      this(null);
+    }
+
+    private Default(SharedParameters.FeignFactory feignFactory) {
+      this.feignFactory = feignFactory;
+    }
+
+    @Override
+    public InvocationHandlerFactory withFeignFactory(SharedParameters.FeignFactory feignFactory) {
+      return new Default(feignFactory);
+    }
 
     @Override
     public InvocationHandler create(Target target, Map<Method, MethodHandler> dispatch) {
-      return new ReflectiveFeign.FeignInvocationHandler(target, dispatch);
+      return new ReflectiveFeign.FeignInvocationHandler(target, dispatch, feignFactory);
     }
   }
 }
