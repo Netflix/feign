@@ -87,10 +87,15 @@ public interface ErrorDecoder {
 
     private final RetryAfterDecoder retryAfterDecoder = new RetryAfterDecoder();
 
+    private final XRateLimitResetDecoder xRateLimitResetDecoder = new XRateLimitResetDecoder();
+
     @Override
     public Exception decode(String methodKey, Response response) {
       FeignException exception = errorStatus(methodKey, response);
       Date retryAfter = retryAfterDecoder.apply(firstOrNull(response.headers(), RETRY_AFTER));
+      if (retryAfter == null && exception instanceof FeignException.TooManyRequests) {
+        retryAfter = xRateLimitResetDecoder.apply(firstOrNull(response.headers(), X_RATE_LIMIT_RESET));
+      }
       if (retryAfter != null) {
         return new RetryableException(
             response.status(),
@@ -154,6 +159,41 @@ public interface ErrorDecoder {
         } catch (ParseException ignored) {
           return null;
         }
+      }
+    }
+  }
+
+  /**
+   * Parses a {@link feign.Util#X_RATE_LIMIT_RESET} header into an absolute date, if possible.
+   *
+   * Some services reports the number of seconds until the rate limit window is reset, others
+   * report the number of seconds since the epoch. Assumes that the seconds will be less than 24 hours in the former case
+   * or within +/- 24 hours from current time in the latter case.
+   */
+  static class XRateLimitResetDecoder {
+
+    public static final long ONE_DAY_MILLIS = 24 * 60 * 60 * 1000;
+
+    protected long currentTimeMillis() {
+      return System.currentTimeMillis();
+    }
+
+    public Date apply(String rateLimitReset) {
+      if (rateLimitReset == null) {
+        return null;
+      }
+      try {
+        long millis = Long.parseLong(rateLimitReset) * 1000;
+
+        if (millis > currentTimeMillis() - ONE_DAY_MILLIS && millis < currentTimeMillis() + ONE_DAY_MILLIS) {
+          return new Date(millis);
+        } else if (millis < ONE_DAY_MILLIS) {
+          return new Date(currentTimeMillis() + millis);
+        } else {
+          return null;
+        }
+      } catch (NumberFormatException e) {
+        return null;
       }
     }
   }

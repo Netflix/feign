@@ -15,6 +15,7 @@ package feign.codec;
 
 import static feign.Util.RETRY_AFTER;
 import static feign.Util.UTF_8;
+import static feign.Util.X_RATE_LIMIT_RESET;
 import static org.assertj.core.api.Assertions.assertThat;
 import feign.FeignException;
 import feign.Request;
@@ -135,4 +136,19 @@ public class DefaultErrorDecoderTest {
 
     throw errorDecoder.decode("Service#foo()", response);
   }
-}
+
+  @Test
+  public void xRateLimitResetHeaderThrowsRetryableException() throws Throwable {
+    thrown.expect(FeignException.class);
+    thrown.expectMessage("status 503 reading Service#foo()");
+
+    headers.put(X_RATE_LIMIT_RESET, Collections.singletonList("60"));
+    Response response = Response.builder()
+            .status(503)
+            .reason("Service Unavailable")
+            .request(Request.create(HttpMethod.GET, "/api", Collections.emptyMap(), null, Util.UTF_8))
+            .headers(headers)
+            .build();
+
+    throw errorDecoder.decode("Service#foo()", response);
+  }}

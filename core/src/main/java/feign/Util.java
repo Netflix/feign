@@ -62,6 +62,10 @@ public class Util {
    */
   public static final String RETRY_AFTER = "Retry-After";
   /**
+   * The HTTP X-RateLimit-Reset header field name.
+   */
+  public static final String X_RATE_LIMIT_RESET = "X-RateLimit-Reset";
+  /**
    * Value for the Content-Encoding header that indicates that GZIP encoding is in use.
    */
   public static final String ENCODING_GZIP = "gzip";
